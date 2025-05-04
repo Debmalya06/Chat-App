@@ -7,6 +7,7 @@ import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestBody;
 
 import com.substring.chat.Repository.RoomRepo;
@@ -15,6 +16,7 @@ import com.substring.chat.entities.Room;
 import com.substring.chat.payload.ReqMessage;
 
 @Controller
+@CrossOrigin("http://localhost:5173")
 public class ChatController {
     
     private RoomRepo roomRepo;

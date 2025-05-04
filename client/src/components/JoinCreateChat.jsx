@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import toggleDarkMode from '../darkModeToggle';
+import toast from 'react-hot-toast';
+import { createRoom as createRoomApi} from '../services/RoomServices';
 
 export default function ChatApp() {
-  const [name, setName] = useState('');
-  const [roomId, setRoomId] = useState('');
+  const [detail, setDetail] = useState({ username: '', roomId: '' });
   const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
 
   const handleToggleDarkMode = () => {
@@ -11,23 +12,55 @@ export default function ChatApp() {
     setIsDarkMode(!isDarkMode);
   };
 
-  const handleSubmit = () => {
-    if (!name || !roomId) {
-      alert('Please enter both name and room ID');
-      return;
-    }
-    // Here you would implement your logic for joining a room
-    alert(`Name: ${name}, Room ID: ${roomId}`);
+  const handleFormInputChange = (event) => {
+    setDetail({
+      ...detail,
+      [event.target.name]: event.target.value,
+    });
   };
+  function validateForm(){
+    if (!detail.username || !detail.roomId) {
+      toast.error('Invaild Input!!');
+      return false;
+    }
+    return true;
+  }
+  function joinChat() {
+    if(validateForm()){
+    //join into y=the room for chat
 
-  const handleCreateRoom = () => {
-    if (!name) {
-      alert('Please enter your name');
-      return;
     }
-    // Logic for creating a new room
-    alert(`Creating new room for ${name}`);
-  };
+  }
+  
+  async function createRoom() {
+    if (validateForm()) {
+      try {
+        const response = await createRoomApi(detail.roomId); // Pass the full detail object
+        console.log(response);
+  
+        // Check if the response indicates that the room already exists
+        if (response?.message === "Room Already Exists") {
+          toast.error("Room Already Exists!!");
+        } else {
+          toast.success("Room created successfully");
+          //join the room
+          joinChat();
+        }
+      } catch (error) {
+        console.log(error);
+  
+        // Handle errors thrown by the API
+        if (error.status === 400) {
+          toast.error("Room Already Exists!!");
+        } else {
+          toast.error(error.message || "Error in creating room");
+        }
+      }
+    }
+  }
+
+
+  
 
   return (
     <div className="flex items-center justify-center h-screen bg-gray-100 dark:bg-gray-900">
@@ -49,7 +82,7 @@ export default function ChatApp() {
             )}
           </button>
         </div>
-        
+
         <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg px-8 pt-6 pb-8 mb-4 transition-colors duration-200">
           <div className="mb-4">
             <label className="block text-gray-700 dark:text-gray-300 text-sm font-bold mb-2" htmlFor="name">
@@ -60,8 +93,9 @@ export default function ChatApp() {
               id="name"
               type="text"
               placeholder="Enter your name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              name="username"
+              value={detail.username}
+              onChange={handleFormInputChange}
             />
           </div>
           <div className="mb-6">
@@ -73,22 +107,23 @@ export default function ChatApp() {
               id="roomId"
               type="text"
               placeholder="Enter room ID"
-              value={roomId}
-              onChange={(e) => setRoomId(e.target.value)}
+              name="roomId"
+              value={detail.roomId}
+              onChange={handleFormInputChange}
             />
           </div>
           <div className="flex items-center justify-between">
             <button
               className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-200"
               type="button"
-              onClick={handleSubmit}
+              onClick={joinChat}
             >
               Join Room
             </button>
             <button
               className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition-colors duration-200"
               type="button"
-              onClick={handleCreateRoom}
+              onClick={createRoom}
             >
               Create Room
             </button>
