@@ -32,22 +32,18 @@ public class ChatController {
         @DestinationVariable String roomId,
         @RequestBody ReqMessage request
     ){
-        
         Room room = roomRepo.findByRoomId(roomId);
-        Message  message = new Message();
+        Message message = new Message();
+        message.setSender(request.getSender());
         message.setContent(request.getContent());
-        message.setContent(request.getSender());
         message.setTimestamp(LocalDateTime.now());
         if(room != null){
-         room.getMessage().add(message);
-         roomRepo.save(room);
-
-        }
-        else{
+            room.getMessage().add(message);
+            roomRepo.save(room);
+        } else {
             throw new RuntimeException("room not found!!");
-
         }
-        return null;
+        return message;
     }
 
 }

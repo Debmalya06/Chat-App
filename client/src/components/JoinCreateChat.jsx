@@ -2,15 +2,22 @@ import { useState, useEffect } from 'react';
 import toggleDarkMode from '../darkModeToggle';
 import toast from 'react-hot-toast';
 import { createRoom as createRoomApi} from '../services/RoomServices';
+import { useChatContext } from '../contex/ChatContex'; 
+import { useNavigate } from 'react-router-dom';
+import { joinChatApi } from '../services/RoomServices';
 
 export default function ChatApp() {
-  const [detail, setDetail] = useState({ username: '', roomId: '' });
+  const [detail, setDetail] = useState({ 
+    username: '', 
+    roomId: '' });
   const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains('dark'));
 
   const handleToggleDarkMode = () => {
     toggleDarkMode();
     setIsDarkMode(!isDarkMode);
   };
+   const {roomId, currentUser, setRoomId, setCurrentUser, setconnected } = useChatContext();
+   const navigate = useNavigate();
 
   const handleFormInputChange = (event) => {
     setDetail({
@@ -25,12 +32,29 @@ export default function ChatApp() {
     }
     return true;
   }
-  function joinChat() {
-    if(validateForm()){
-    //join into y=the room for chat
-
+async function joinChat() {
+  if (validateForm()) {
+    try {
+      // Try to join the room
+      const room = await joinChatApi(detail.roomId);
+      toast.success("Joined the room successfully");
+      console.log("Joined the room successfully");
+      setCurrentUser(detail.username);
+      setRoomId(room.roomId);
+      setconnected(true);
+navigate(`/chat`, { state: { name: detail.username, roomId: detail.roomId } });
+    } catch (error) {
+      if (error.response && error.response.status === 404) {
+        toast.error("Room not found");
+      } else if (error.response && error.response.status === 400) {
+        toast.error("Invalid Room ID");
+      } else {
+        toast.error("Error joining chat");
+      }
+      console.error("Error joining chat:", error);
     }
   }
+}
   
   async function createRoom() {
     if (validateForm()) {
@@ -44,7 +68,12 @@ export default function ChatApp() {
         } else {
           toast.success("Room created successfully");
           //join the room
-          joinChat();
+          setCurrentUser(detail.username);
+          setRoomId(detail.roomId);
+          setconnected(true);
+      navigate(`/chat`, { state: { name: detail.username, roomId: detail.roomId } });
+          // joinChat();
+          // forward to chat page
         }
       } catch (error) {
         console.log(error);

@@ -4,10 +4,27 @@ import { useState, useEffect, useRef } from "react"
 import { ArrowLeft, Send, Moon, Sun, Paperclip, X } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import toggleDarkMode from "../darkModeToggle"
+import { useChatContext } from '../contex/ChatContex';
+import { Client } from '@stomp/stompjs';
+import { getMessages } from '../services/RoomServices';
+import SockJS from 'sockjs-client';
+import toast from 'react-hot-toast';
+import { baseURL } from "../config/AxiosHelper"
 
 export default function ChatPage() {
-  const navigate = useNavigate()
-  const location = useLocation()
+ const { roomId: contextRoomId, currentUser, connected } = useChatContext();
+const navigate = useNavigate();
+const location = useLocation();
+const userName = location.state?.name || "Guest User";
+const roomId = location.state?.roomId || contextRoomId || "Unknown Room";
+
+useEffect(() => {
+  if (!connected) {
+    navigate("/")
+  }
+}, [connected, currentUser, roomId]);
+
+
   const [isDarkMode, setIsDarkMode] = useState(document.documentElement.classList.contains("dark"))
   const [message, setMessage] = useState("")
   const [messages, setMessages] = useState([])
@@ -15,9 +32,8 @@ export default function ChatPage() {
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
 
+  const [stompClient, setStompClient] = useState(null)
   // Mock data - in a real app, this would come from props or context
-  const userName = location.state?.name || "Guest User"
-  const roomId = location.state?.roomId || "Unknown Room"
 
   // Generate profile picture based on name
   const generateProfilePic = (name) => {
@@ -38,53 +54,7 @@ export default function ChatPage() {
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}`;
   }
 
-  // Sample messages for demonstration
-  useEffect(() => {
-    const sampleMessages = [
-      {
-        id: 1,
-        sender: "John Doe",
-        text: "Hey everyone! Welcome to the room.",
-        isSelf: false,
-        timestamp: new Date(Date.now() - 3600000).toISOString(),
-        avatar: generateProfilePic("John Doe")
-      },
-      {
-        id: 2,
-        sender: userName,
-        text: "Thanks for having me!",
-        isSelf: true,
-        timestamp: new Date(Date.now() - 3000000).toISOString(),
-        avatar: generateProfilePic(userName)
-      },
-      {
-        id: 3,
-        sender: "Sarah Kim",
-        text: "How is everyone doing today?",
-        isSelf: false,
-        timestamp: new Date(Date.now() - 2400000).toISOString(),
-        avatar: generateProfilePic("Sarah Kim")
-      },
-      {
-        id: 4,
-        sender: "Mike Johnson",
-        text: "I'm doing great! Excited to chat with you all.",
-        isSelf: false,
-        timestamp: new Date(Date.now() - 1800000).toISOString(),
-        avatar: generateProfilePic("Mike Johnson")
-      },
-      {
-        id: 5,
-        sender: userName,
-        text: "I'm good too. What are we discussing today?",
-        isSelf: true,
-        timestamp: new Date(Date.now() - 1200000).toISOString(),
-        avatar: generateProfilePic(userName)
-      },
-    ]
-
-    setMessages(sampleMessages)
-  }, [userName])
+  // Remove sample messages logic. Real messages will be loaded from backend.
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -101,15 +71,17 @@ export default function ChatPage() {
   }
 
   const handleSendMessage = (e) => {
-    e.preventDefault()
-    if (!message.trim() && !selectedFile) return
+    e.preventDefault();
+    if (!message.trim() && !selectedFile) return;
 
+    // Use the same structure as sendMessage for instant UI update
     const newMessage = {
       id: Date.now(),
       sender: userName,
-      text: message,
-      isSelf: true,
+      content: message,
+      roomId: roomId,
       timestamp: new Date().toISOString(),
+      isSelf: true,
       avatar: generateProfilePic(userName),
       attachment: selectedFile ? {
         name: selectedFile.name,
@@ -117,12 +89,30 @@ export default function ChatPage() {
         size: selectedFile.size,
         url: URL.createObjectURL(selectedFile)
       } : null
-    }
+    };
 
-    setMessages([...messages, newMessage])
-    setMessage("")
-    setSelectedFile(null)
-  }
+    setMessages((prevMessages) => [
+      ...prevMessages,
+      {
+        id: newMessage.id,
+        sender: newMessage.sender,
+        text: newMessage.content,
+        isSelf: true,
+        timestamp: newMessage.timestamp,
+        avatar: newMessage.avatar,
+        attachment: newMessage.attachment || null
+      }
+    ]);
+
+    if (stompClient) {
+      stompClient.publish({
+        destination: `/app/sendMessage/${roomId}`,
+        body: JSON.stringify(newMessage)
+      });
+    }
+    setMessage("");
+    setSelectedFile(null);
+  };
 
   const handleFileSelect = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -168,6 +158,93 @@ export default function ChatPage() {
     }
   }
 
+// Page init, load all messages!!
+useEffect(() => {
+  async function fetchInitialMessages() {
+    try {
+      const fetchedMessages = await getMessages(roomId, 50, 0);
+      // Transform messages to UI format
+      const transformed = fetchedMessages.map((msg, idx) => {
+        const senderName = msg.sender || "Unknown";
+        return {
+          id: msg.id || `${msg.timestamp || Date.now()}_${idx}`,
+          sender: senderName,
+          text: msg.content,
+          isSelf: senderName === userName, // userName is current user
+          timestamp: msg.timestamp,
+          avatar: generateProfilePic(senderName),
+        };
+      });
+      setMessages(transformed);
+      console.log("Fetched messages:", transformed);
+    } catch (error) {
+      toast.error("Failed to load messages");
+      console.error(error);
+    }
+  }
+  fetchInitialMessages();
+  // eslint-disable-next-line
+}, [roomId, userName]);
+
+//activate stomp client and subscribe to the room topic
+useEffect(() => {
+  const client = new Client({
+    webSocketFactory: () => new SockJS(`${baseURL}/chat`),
+    reconnectDelay: 5000,
+    debug: (str) => console.log(str),
+    onConnect: () => {
+      setStompClient(client);
+      toast.success("Connected to chat server");
+      // Subscribe to the correct topic for real-time updates
+      client.subscribe(`/topic/messages/${roomId}`, (message) => {
+        if (message.body) {
+          const msgData = JSON.parse(message.body);
+          // Transform incoming message to UI format
+          const senderName = msgData.sender || "Unknown";
+          const transformedMsg = {
+            id: msgData.id || `${msgData.timestamp || Date.now()}_${Math.random()}`,
+            sender: senderName,
+            text: msgData.content,
+            isSelf: senderName === userName,
+            timestamp: msgData.timestamp,
+            avatar: generateProfilePic(senderName),
+          };
+          setMessages((prevMessages) => [...prevMessages, transformedMsg]);
+        }
+      });
+    },
+    onStompError: (frame) => {
+      toast.error("WebSocket error: " + frame.headers["message"]);
+      console.error("Broker reported error: " + frame.headers["message"]);
+      console.error("Additional details: " + frame.body);
+    },
+    onWebSocketError: (evt) => {
+      toast.error("WebSocket connection failed");
+      console.error("WebSocket error", evt);
+    }
+  });
+  client.activate();
+
+  return () => {
+    client.deactivate();
+  };
+}, [roomId]);
+
+// Remove old sendMessage handler (now handled in handleSendMessage)
+
+
+
+const handleLeaveRoom = () => {
+  if (stompClient) {
+    stompClient.deactivate();
+    setStompClient(null);
+  }
+  setMessages([]);
+  setMessage("");
+  setSelectedFile(null);
+  navigate("/join");
+  toast.success("You have left the room.");
+};
   return (
     <div className="flex flex-col h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-200">
       {/* Navbar */}
@@ -191,12 +268,21 @@ export default function ChatPage() {
             </div>
           </div>
         </div>
-        <button
-          onClick={handleToggleDarkMode}
-          className="p-2 rounded-full bg-gray-200 dark:bg-gray-700 transition-colors duration-200"
-        >
-          {isDarkMode ? <Sun className="h-5 w-5 text-yellow-500" /> : <Moon className="h-5 w-5 text-gray-700" />}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleToggleDarkMode}
+            className="p-2 rounded-full bg-gray-200 dark:bg-gray-700 transition-colors duration-200"
+          >
+            {isDarkMode ? <Sun className="h-5 w-5 text-yellow-500" /> : <Moon className="h-5 w-5 text-gray-700" />}
+          </button>
+          <button
+            onClick={handleLeaveRoom}
+            className="ml-2 px-3 py-2 rounded-full bg-red-500 hover:bg-red-600 text-white font-semibold text-sm transition-colors duration-200"
+            title="Leave Room"
+          >
+            Leave Room
+          </button>
+        </div>
       </div>
 
       {/* Chat Messages */}
