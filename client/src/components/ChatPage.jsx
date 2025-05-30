@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import Picker from '@emoji-mart/react';
+import data from '@emoji-mart/data';
 import { ArrowLeft, Send, Moon, Sun, Paperclip, X } from "lucide-react"
 import { useNavigate, useLocation } from "react-router-dom"
 import toggleDarkMode from "../darkModeToggle"
@@ -29,6 +31,12 @@ useEffect(() => {
   const [message, setMessage] = useState("")
   const [messages, setMessages] = useState([])
   const [selectedFile, setSelectedFile] = useState(null)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  // Insert emoji into message input (emoji-mart v5)
+  const handleEmojiSelect = (emoji) => {
+    setMessage((prev) => prev + (emoji.native || ''));
+    setShowEmojiPicker(false);
+  };
   const messagesEndRef = useRef(null)
   const fileInputRef = useRef(null)
 
@@ -74,7 +82,7 @@ useEffect(() => {
     e.preventDefault();
     if (!message.trim() && !selectedFile) return;
 
-    // Use the same structure as sendMessage for instant UI update
+    // Only send the message to the backend, do not optimistically add to UI
     const newMessage = {
       id: Date.now(),
       sender: userName,
@@ -90,19 +98,6 @@ useEffect(() => {
         url: URL.createObjectURL(selectedFile)
       } : null
     };
-
-    setMessages((prevMessages) => [
-      ...prevMessages,
-      {
-        id: newMessage.id,
-        sender: newMessage.sender,
-        text: newMessage.content,
-        isSelf: true,
-        timestamp: newMessage.timestamp,
-        avatar: newMessage.avatar,
-        attachment: newMessage.attachment || null
-      }
-    ]);
 
     if (stompClient) {
       stompClient.publish({
@@ -385,7 +380,13 @@ const handleLeaveRoom = () => {
       )}
 
       {/* Message Input */}
-      <div className="bg-white dark:bg-gray-800 p-4 border-t border-gray-200 dark:border-gray-700">
+      <div className="bg-white dark:bg-gray-800 p-4 border-t border-gray-200 dark:border-gray-700 relative">
+        {/* Emoji Picker Popup */}
+        {showEmojiPicker && (
+          <div className="absolute bottom-16 left-12 z-50">
+            <Picker data={data} onEmojiSelect={handleEmojiSelect} theme={isDarkMode ? 'dark' : 'light'} />
+          </div>
+        )}
         <form onSubmit={handleSendMessage} className="flex items-center space-x-2">
           <input
             type="file"
@@ -397,8 +398,19 @@ const handleLeaveRoom = () => {
             type="button"
             onClick={handleAttachClick}
             className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-none"
+            title="Attach file"
           >
             <Paperclip size={20} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowEmojiPicker((v) => !v)}
+            className={`p-2 text-gray-500 hover:text-yellow-500 dark:text-gray-400 dark:hover:text-yellow-400 focus:outline-none ${showEmojiPicker ? 'bg-yellow-100 dark:bg-yellow-900' : ''}`}
+            title="Emoji picker"
+            tabIndex={0}
+            style={{ fontSize: 20, lineHeight: 1 }}
+          >
+            <span role="img" aria-label="emoji">😊</span>
           </button>
           <input
             type="text"
@@ -410,7 +422,7 @@ const handleLeaveRoom = () => {
           <button
             type="submit"
             disabled={!message.trim() && !selectedFile}
-            className={`${
+            className={`$${
               !message.trim() && !selectedFile 
                 ? "bg-blue-300 dark:bg-blue-700 cursor-not-allowed" 
                 : "bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700"

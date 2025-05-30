@@ -16,7 +16,7 @@ import com.substring.chat.entities.Room;
 import com.substring.chat.payload.ReqMessage;
 
 @Controller
-@CrossOrigin("http://localhost:5173")
+@CrossOrigin("https://chat-app-38ks.onrender.com")
 public class ChatController {
     
     private RoomRepo roomRepo;
