@@ -20,8 +20,7 @@ import com.substring.chat.entities.Room;
 
 @RestController
 @RequestMapping("/api/v1/rooms")
-@CrossOrigin("https://chat-app-38ks.onrender.com")
-
+@CrossOrigin(origins = {"http://localhost:5173", "https://chat-app-38ks.onrender.com"})
 public class RoomController {
     private RoomRepo roomRepo;
     public RoomController(RoomRepo roomRepo){
